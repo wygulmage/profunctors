@@ -75,8 +75,8 @@ class Profunctor p => Strong p where
   --   assoc ((a,b),c) = (a,(b,c))
   --   unassoc (a,(b,c)) = ((a,b),c)
   -- @
-  first' :: p a b  -> p (a, c) (b, c)
-  first' = dimap swap swap . second'
+  first' :: p a b -> p (a, c) (b, c)
+  first' = lens fst (\ xy x' -> (x', snd xy))
 
   -- | Laws:
   --
@@ -91,7 +91,10 @@ class Profunctor p => Strong p where
   second' :: p a b -> p (c, a) (c, b)
   second' = dimap swap swap . first'
 
-  {-# MINIMAL first' | second' #-}
+  lens :: (s -> a) -> (s -> b -> t) -> p a b -> p s t
+  lens g f = dimap (id &&& g) (uncurry f) . second'
+
+  {-# MINIMAL first' | second' | lens #-}
 
 uncurry' :: Strong p => p a (b -> c) -> p (a, b) c
 uncurry' = rmap (\(f,x) -> f x) . first'
