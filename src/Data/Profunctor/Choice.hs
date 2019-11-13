@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 -- |
 -- Copyright   :  (C) 2014-2015 Edward Kmett
@@ -28,9 +29,10 @@ module Data.Profunctor.Choice
   ) where
 
 import Control.Applicative hiding (WrappedArrow(..))
-import Control.Arrow
+import Control.Arrow hiding (first)
 import Control.Category
 import Control.Comonad
+import Data.Bifunctor (first)
 import Data.Bifunctor.Joker (Joker(..))
 import Data.Bifunctor.Product (Product(..))
 import Data.Bifunctor.Sum (Sum(..))
@@ -77,8 +79,8 @@ class Profunctor p => Choice p where
   --   unassocE ('Right' ('Left' b)) = 'Left' ('Right' b)
   --   unassocE ('Right' ('Right' c)) = 'Right' c
   -- @
-  left'  :: p a b -> p (Either a c) (Either b c)
-  left' =  dimap (either Right Left) (either Right Left) . right'
+  left' :: p a b -> p (Either a c) (Either b c)
+  left' = proprism Left (either Right (Left . Right))
 
   -- | Laws:
   --
@@ -101,7 +103,17 @@ class Profunctor p => Choice p where
   right' :: p a b -> p (Either c a) (Either c b)
   right' =  dimap (either Right Left) (either Right Left) . left'
 
-  {-# MINIMAL left' | right' #-}
+  proprism :: (b -> d) -> (c -> Either d a) -> p a b -> p c d
+  proprism f g = dimap g (either id f) . right'
+
+  {-# MINIMAL left' | right' | proprism #-}
+
+prism ::
+  (Choice p, Applicative m) =>
+  (c -> d) -> (b -> Either d a) -> p a (m c) -> p b (m d)
+prism f g = proprism  (fmap f) (first pure . g)
+{-# INLINE prism #-}
+
 
 instance Choice (->) where
   left' ab (Left a) = Left (ab a)
@@ -109,18 +121,22 @@ instance Choice (->) where
   {-# INLINE left' #-}
   right' = fmap
   {-# INLINE right' #-}
+  proprism f g h = either id (f . h) . g
+  {-# INLINE proprism #-}
 
 instance Monad m => Choice (Kleisli m) where
   left' = left
   {-# INLINE left' #-}
   right' = right
   {-# INLINE right' #-}
+  proprism f g = Kleisli . prism f g . runKleisli
 
 instance Applicative f => Choice (Star f) where
   left' (Star f) = Star $ either (fmap Left . f) (pure . Right)
   {-# INLINE left' #-}
   right' (Star f) = Star $ either (pure . Left) (fmap Right . f)
   {-# INLINE right' #-}
+  proprism f g = Star . prism f g . runStar
 
 -- | 'extract' approximates 'costrength'
 instance Comonad w => Choice (Cokleisli w) where
