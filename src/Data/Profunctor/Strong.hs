@@ -76,7 +76,8 @@ class Profunctor p => Strong p where
   --   unassoc (a,(b,c)) = ((a,b),c)
   -- @
   first' :: p a b -> p (a, c) (b, c)
-  first' = lens fst (\ xy x' -> (x', snd xy))
+  first' = prolens fst (\ xy x' -> (x', snd xy))
+  -- first' = dimap swap swap . second'
 
   -- | Laws:
   --
@@ -90,18 +91,28 @@ class Profunctor p => Strong p where
   -- @
   second' :: p a b -> p (c, a) (c, b)
   second' = dimap swap swap . first'
+  -- second' = prolens snd (\ xy y' -> (fst xy, y'))
 
-  lens :: (s -> a) -> (s -> b -> t) -> p a b -> p s t
-  lens g f = dimap (id &&& g) (uncurry f) . second'
+  -- prolens :: (s -> a) -> (s -> b -> t) -> p a b -> p s t
+  prolens :: (b -> a) -> (b -> c -> d) -> p a c -> p b d
+  prolens g f = dimap (\ s -> (s, g s)) (uncurry f) . second'
+  -- prolens g f = strong f . lmap g
 
-  {-# MINIMAL first' | second' | lens #-}
+  {-# MINIMAL first' | second' | prolens #-}
+
+
+lens ::
+  (Strong p, Functor m) =>
+  (c -> a) -> (c -> b -> d) -> p a (m b) -> p c (m d)
+lens g f = prolens g (\ c -> fmap (f c))
 
 uncurry' :: Strong p => p a (b -> c) -> p (a, b) c
 uncurry' = rmap (\(f,x) -> f x) . first'
 {-# INLINE uncurry' #-}
 
 strong :: Strong p => (a -> b -> c) -> p a b -> p a c
-strong f x = dimap (\a -> (a, a)) (\(b, a) -> f a b) (first' x)
+-- strong f x = dimap (\ a -> (a, a)) (uncurry f) (second' x)
+strong = prolens id
 
 instance Strong (->) where
   first' ab ~(a, c) = (ab a, c)
